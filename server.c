@@ -3,26 +3,26 @@
 #include <netinet/in.h>
 #include <string.h>
 #include <stdlib.h>
-#include  <fcntl.h>
 
-#define BUFF_SIZE 1024
-#define URL "127.0.0.1"
-#define ERROR 1
 #define PORT 1025
+#define URL "127.0.0.1"
+#define BUFF_SIZE 1025
+#define ERROR 1
 
 void perror(const char* _msg)
 {
 	/*TODO*/
+	printf("Error: %s\n", _msg);
 	exit(ERROR);
 }
 
 int main()
 {
-	int socketDesc;
+	int socketDesc, newSocket;
 	char buffer[BUFF_SIZE];
 	struct sockaddr_in serverAddr;
 	socklen_t addr_size;
-	char string[] = "TheString";
+	struct sockaddr_storage serverStorage;
 	
 	if((socketDesc = socket(PF_INET, SOCK_STREAM, 0)) == -1)
 	{
@@ -35,30 +35,18 @@ int main()
 	
 	memset(serverAddr.sin_zero, '\0', sizeof(serverAddr.sin_zero));
 
-	addr_size = sizeof(serverAddr);	
+	bind(socketDesc, (struct sockaddr *) &serverAddr, sizeof(serverAddr));
 	
-	if(connect(socketDesc, (struct sockaddr *) &serverAddr, addr_size) == -1)
-	{
-		perror("Couldn't establish connection with the server");
-	}
+	listen(socketDesc, 1);
 	
-	/*write(socketDesc, string, sizeof(string));*/
-	
-	read(socketDesc, buffer, BUFF_SIZE);
-	
-	printf("Data received by client: %s",buffer);  
-	
+	addr_size = sizeof(serverStorage);
+  	newSocket = accept(socketDesc, (struct sockaddr *) &serverStorage, &addr_size);
+
+	strcpy(buffer,"Hello World\n");
+    write(newSocket,buffer,13);
+
 	return 0;
 }
-
-
-
-
-
-
-
-
-
 
 
 
