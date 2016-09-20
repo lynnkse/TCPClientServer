@@ -3,12 +3,13 @@
 #include <netinet/in.h>
 #include <string.h>
 #include <stdlib.h>
-#include  <fcntl.h>
+#include <fcntl.h>
+#include <string.h>
 
 #define BUFF_SIZE 1024
 #define URL "127.0.0.1"
 #define ERROR 1
-#define PORT 1025
+#define PORT 1026
 
 void perror(const char* _msg)
 {
@@ -42,11 +43,14 @@ int main()
 		perror("Couldn't establish connection with the server");
 	}
 	
-	/*write(socketDesc, string, sizeof(string));*/
+	while(strcmp(buffer, "exit") != 0)
+	{
+		printf("Enter message...\n");
+		scanf("%s", buffer);
+		write(socketDesc, buffer, strlen(buffer) + 1);
+	}  
 	
-	read(socketDesc, buffer, BUFF_SIZE);
-	
-	printf("Data received by client: %s",buffer);  
+	close(socketDesc);
 	
 	return 0;
 }
