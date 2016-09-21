@@ -6,13 +6,14 @@
 #include "server.h"
 #include "../generic_hash/HashMap.h"
 
-#define PORT 1026
-#define URL "127.0.0.1"
-#define BUFF_SIZE 1025
+
+
+#define BUFF_SIZE 1024
 #define ERROR 1
 #define NUM_OF_CLIENTS 3
 #define TIMEOUT 5
 #define HASHMAP_CAP 1000
+#define KEY_LEN 128
 
 struct Server_t
 {
@@ -20,9 +21,29 @@ struct Server_t
 	HashMap* m_clientSockets;
 	fd_set m_rfds;
 	struct sockaddr_in m_serverAddr;
+	int m_currSocket;
+	char* m_currSocketKey;
+	int m_port;
+	char* m_IP;
 	/*socklen_t m_addr_size;*/
 	/*struct sockaddr_storage serverStorage;*/
 };
+
+static void SaveNewClientSocket(Server_t* _server)
+{
+	int* val = (int*) malloc(sizeof(int));
+	char* key = (char*) malloc(KEY_LEN * sizeof(char)); 
+	/*FIXME*/
+	key[0] = 97 + rand() % 22;
+	key[1] = 97 + rand() % 22;
+	key[2] = 97 + rand() % 22;
+	key[3] = 97 + rand() % 22;
+	key[4] = '\0';
+	
+	*val = _server->m_currSocket;
+	
+	HashMap_Insert(_server->m_clientSockets, key, val);
+}
 
 static int HashFunc(char *str)
 {
@@ -35,12 +56,45 @@ static int HashFunc(char *str)
 	return hash;
 }
 
+static void KeyDestraction(void* _key)
+{
+	free(_key);
+}
+
+static void ValDestraction(void* _val)
+{
+	free(_val);
+}
+
+static int FdSetFunc(char* _key, int* _value, Server_t* _server)
+{
+	FD_SET(*_value, &_server->m_rfds);
+
+	return 1;
+}
+
+static int FdIsSetFunc(char* _key, int* _value, Server_t* _server)
+{
+	if(FD_ISSET(*_value, &_server->m_rfds) == 0)
+	{
+		return 1;
+	}
+	else
+	{
+		_server->m_currSocket = *_value;
+		_server->m_currSocketKey = _key;
+		return 0;
+	}
+	
+	return (FD_ISSET(*_value, &_server->m_rfds) == 0 ? 1 : 0);
+}
+
 static int KeyEq(char* _str1, char* _str2)
 {
 	return (strcmp(_str1, _str2) == 0);
 }
 
-Server_t* ServerCreate(int _portNum)
+Server_t* ServerCreate(int _portNum, const char* _IP)
 {
 	Server_t* server;
 	
@@ -48,14 +102,17 @@ Server_t* ServerCreate(int _portNum)
 	
 	server->m_clientSockets = HashMap_Create(HASHMAP_CAP, (HashFunction) HashFunc, (EqualityFunction) KeyEq);
 	
+	server->m_port = _portNum;
+	server->m_IP = _IP;
+	
 	if((server->m_serverSocket = socket(PF_INET, SOCK_STREAM, 0)) == -1)
 	{
 		/*TODO error here*/
 	}
 	
 	server->m_serverAddr.sin_family = AF_INET;
-	server->m_serverAddr.sin_port = htons(PORT);
-	server->m_serverAddr.sin_addr.s_addr = inet_addr(URL);
+	server->m_serverAddr.sin_port = htons(_portNum);
+	server->m_serverAddr.sin_addr.s_addr = inet_addr(_IP);/*htonl(INADDR_ANY);*/
 	
 	memset(server->m_serverAddr.sin_zero, 0, sizeof(server->m_serverAddr.sin_zero));
 	
@@ -73,7 +130,55 @@ Server_t* ServerCreate(int _portNum)
 void ServerDestroy(Server_t* _server)
 {
 	close(_server->m_serverSocket);
+	HashMap_Destroy(&_server->m_clientSockets, KeyDestraction, ValDestraction);
 	free(_server);
+}
+
+void ServerRun(Server_t* _server)
+{
+	int result = 0;
+	void* valToDestroy;
+	int readBytesNum;
+	char buffer[BUFF_SIZE];
+	socklen_t addrSize = sizeof(struct sockaddr);
+	
+	while(1)/*FIXME*/
+	{
+		FD_ZERO(&_server->m_rfds);
+		
+		HashMap_ForEach(_server->m_clientSockets, (KeyValueActionFunction) FdSetFunc, _server);
+		
+		result = select((int) HashMap_Size(_server->m_clientSockets) + 1, &_server->m_rfds, NULL, NULL, NULL);
+		
+		if(result > 0)
+		{
+			if(FD_ISSET(_server->m_serverSocket, &_server->m_rfds) == 1)
+			{
+				_server->m_currSocket = accept(_server->m_serverSocket, (struct sockaddr*) &_server->m_serverAddr, &addrSize);
+				SaveNewClientSocket(_server);
+			}
+			else
+			{
+				HashMap_ForEach(_server->m_clientSockets, (KeyValueActionFunction) FdIsSetFunc, _server);
+				readBytesNum = read(_server->m_currSocket, buffer, BUFF_SIZE);
+				
+				if(readBytesNum == 0)
+				{
+					close(_server->m_currSocket);
+					HashMap_Remove(_server->m_clientSockets, _server->m_currSocketKey, &valToDestroy);
+					ValDestraction(valToDestroy);
+				}
+				else if(readBytesNum > 0)
+				{
+					printf("Server recieved message: %s\n", buffer);
+				}
+				else
+				{
+					/*FIXME this should't happen, add log or whatever here*/
+				}
+			}
+		}
+	}
 }
 
 int main() 
