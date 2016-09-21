@@ -17,7 +17,7 @@ void perror(const char* _msg)
 	exit(ERROR);
 }
 
-int main()
+int main() 
 {
 	int socketDesc;
 	int newSocket[3];
