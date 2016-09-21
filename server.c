@@ -45,13 +45,15 @@ int main()
 		perror("Couldn't bind\n");
 	}
 	
-	listen(socketDesc, 1);
-	addr_size = sizeof(serverStorage);
-	
 	FD_ZERO(&rfds);
 	FD_SET(socketDesc, &rfds);	
 	
-	printf("i'm here!");
+	while(1)
+	{
+		
+	}
+	
+	
 	
 	while((currSoc = select(3, &rfds, NULL, NULL, NULL)) != -1)
 	{
