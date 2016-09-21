@@ -7,13 +7,15 @@
 #include "../generic_hash/HashMap.h"
 
 
-
+#define IP "127.0.0.1"
+#define PORT_NUM 1025
 #define BUFF_SIZE 1024
 #define ERROR 1
 #define NUM_OF_CLIENTS 3
 #define TIMEOUT 5
 #define HASHMAP_CAP 1000
 #define KEY_LEN 128
+#define NUM_OF_CONNECTIONS_WAITING 1
 
 struct Server_t
 {
@@ -22,6 +24,7 @@ struct Server_t
 	fd_set m_rfds;
 	struct sockaddr_in m_serverAddr;
 	int m_currSocket;
+	int m_maxSocket;
 	char* m_currSocketKey;
 	int m_port;
 	char* m_IP;
@@ -104,11 +107,16 @@ Server_t* ServerCreate(int _portNum, const char* _IP)
 	
 	server->m_port = _portNum;
 	server->m_IP = _IP;
+	server->m_currSocket = 0;
 	
 	if((server->m_serverSocket = socket(PF_INET, SOCK_STREAM, 0)) == -1)
 	{
 		/*TODO error here*/
+		printf("Error: couldn't open socket\n");
 	}
+	/*printf("Socket: %d\n", server->m_serverSocket);*/
+	
+	server->m_maxSocket = server->m_serverSocket;
 	
 	server->m_serverAddr.sin_family = AF_INET;
 	server->m_serverAddr.sin_port = htons(_portNum);
@@ -118,6 +126,7 @@ Server_t* ServerCreate(int _portNum, const char* _IP)
 	
 	if(bind(server->m_serverSocket, (struct sockaddr *) &server->m_serverAddr, sizeof(server->m_serverAddr)) == -1)
 	{
+		printf("Error: couldn't bind\n");
 		/*FIXME*/
 	}
 	
@@ -142,13 +151,16 @@ void ServerRun(Server_t* _server)
 	char buffer[BUFF_SIZE];
 	socklen_t addrSize = sizeof(struct sockaddr);
 	
+	listen(_server->m_serverSocket, NUM_OF_CONNECTIONS_WAITING);
+	
 	while(1)/*FIXME*/
 	{
 		FD_ZERO(&_server->m_rfds);
+		FD_SET(_server->m_serverSocket, &_server->m_rfds);
 		
 		HashMap_ForEach(_server->m_clientSockets, (KeyValueActionFunction) FdSetFunc, _server);
 		
-		result = select((int) HashMap_Size(_server->m_clientSockets) + 1, &_server->m_rfds, NULL, NULL, NULL);
+		result = select(_server->m_maxSocket + 1, &_server->m_rfds, NULL, NULL, NULL);
 		
 		if(result > 0)
 		{
@@ -156,6 +168,10 @@ void ServerRun(Server_t* _server)
 			{
 				_server->m_currSocket = accept(_server->m_serverSocket, (struct sockaddr*) &_server->m_serverAddr, &addrSize);
 				SaveNewClientSocket(_server);
+				if(_server->m_currSocket > _server->m_maxSocket)
+				{
+					_server->m_maxSocket = _server->m_currSocket;
+				}
 			}
 			else
 			{
@@ -183,6 +199,11 @@ void ServerRun(Server_t* _server)
 
 int main() 
 {
+	Server_t* server;
+	
+	server = ServerCreate(PORT_NUM, IP);
+	ServerRun(server);
+	ServerDestroy(server);
 
 	return 0;
 }
