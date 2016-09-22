@@ -4,11 +4,13 @@
 #include <string.h>
 #include <stdlib.h>
 #include  <fcntl.h>
+#include "../GenericHashMap/HashMap.h "
 
 #define BUFF_SIZE 1024
 #define IP "127.0.0.1"
 #define ERROR 1
 #define PORT 1025
+#define NUM_OF_CLIENTS
 
 void perror(const char* _msg)
 {
@@ -16,19 +18,32 @@ void perror(const char* _msg)
 	exit(ERROR);
 }
 
+int SimpleHash(int* _num)
+{
+	return *_num;
+}
+
+int KeyEq(int* _num1, int* _num2)
+{
+	return *_num1 == *_num2;
+}
+
 int main()
 {
-	int socketDesc;
+	int socketDesc[NUM_OF_CLIENTS];
 	char buffer[BUFF_SIZE];
 	struct sockaddr_in serverAddr;
 	socklen_t addr_size;
-	char string[] = "TheString";
-	
-	if((socketDesc = socket(PF_INET, SOCK_STREAM, 0)) == -1)
+	char string[1024];
+	int i;
+
+	for(i = 0; i < NUM_OF_CLIENTS; ++i)
 	{
-		perror("Couldn't open socket");
+		if((socketDesc[i] = socket(PF_INET, SOCK_STREAM, 0)) == -1)
+		{
+			perror("Couldn't open socket");
+		}
 	}
-	printf("Socket: %d\n", socketDesc);
 	
 	serverAddr.sin_family = AF_INET;
 	serverAddr.sin_port = htons(PORT);
@@ -38,14 +53,23 @@ int main()
 
 	addr_size = sizeof(serverAddr);	
 	
-	if(connect(socketDesc, (struct sockaddr *) &serverAddr, addr_size) == -1)
+	for(i = 0; i < NUM_OF_CLIENTS; ++i)
 	{
-		perror("Couldn't establish connection with the server");
+		if(connect(socketDesc[i], (struct sockaddr *) &serverAddr, addr_size) == -1)
+		{
+			perror("Couldn't establish connection with the server");
+		}
 	}
 	
-	printf("Enter your message...\n");
-	scanf("%s", string);
-	write(socketDesc, string, sizeof(string));
+	while(1)
+	{
+		for(i = 0; i < NUM_OF_CLIENTS; ++i)
+		{
+			sprintf(string, "Client %d send a message\n", i);			
+			write(socketDesc, string, sizeof(string));
+		}
+	}
+	
 	
 	/*read(socketDesc, buffer, BUFF_SIZE);
 	

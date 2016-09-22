@@ -4,7 +4,7 @@
 #include <string.h>
 #include <stdlib.h>
 #include "server.h"
-#include "../generic_hash/HashMap.h"
+#include "../GenericHashMap/HashMap.h"
 
 
 #define IP "127.0.0.1"
