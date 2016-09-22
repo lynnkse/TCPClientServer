@@ -20,13 +20,8 @@ struct Clients_t
 	int* m_socketDescriptors;
 	socklen_t addr_size;
 	struct sockaddr_in serverAddr;
+	size_t m_numOfClients;
 };
-
-static void perror(const char* _msg)
-{
-	/*TODO*/
-	exit(ERROR);
-}
 
 static void ResetClose(int _socketDesc)
 {
@@ -50,13 +45,70 @@ static void SilentClose(int _socketDesc)
 	setsockopt(_socketDesc, SOL_SOCKET, TCP_REPAIR, &num, sizeof(int));
 }
 
+static void CreateNewConnection(int* _socket, Clients_t* _clients)
+{
+	if((*_socket = socket(PF_INET, SOCK_STREAM, 0)) == -1)
+	{
+		/*FIXME fix this!!!*/
+	}
+	
+	if(connect(*_socket, (struct sockaddr *) &_clients->serverAddr, _clients->addr_size) == -1)
+	{
+		/*FIXME fix this!!!*/
+		printf("Couldn't establish connection with the server");
+	}
+}
+
+static void SendMessageToServer(int _socket)
+{
+	char buffer[BUFF_SIZE];
+	sprintf(buffer, "Client message");			
+	write(_socket, buffer, strlen(buffer) + 1);
+}
+
+static void DisconnectClient(int* _socket)
+{
+	int opt = rand() % 3;
+	
+	switch(opt)
+	{
+		case 0:
+			FinClose(*_socket);
+			break;
+		case 1:
+			ResetClose(*_socket);
+			break;
+		case 2:
+			SilentClose(*_socket);
+			break;
+	} 
+	
+	*_socket = 0;
+}
+
+static void RecieveMessage(int _socket)
+{
+	char buffer[BUFF_SIZE];
+	
+	read(_socket, buffer, BUFF_SIZE);
+	
+	printf("Client recieved message: %s\n", buffer);
+}
+
 Clients_t* ClientsCreate(size_t _numOfClients, int _portNum, const char* _IP)
 {
 	Clients_t* clients;
 	
-	clients = (int*) calloc(_numOfClients, sizeof(int));
+	clients = (Clients_t*) malloc(sizeof(Clients_t));
 	if(NULL == clients)
 	{
+		return NULL;
+	}
+	
+	clients->m_socketDescriptors = (int*) calloc(_numOfClients, sizeof(int));
+	if(NULL == clients->m_socketDescriptors)
+	{
+		free(clients);
 		return NULL;
 	}
 	
@@ -66,63 +118,81 @@ Clients_t* ClientsCreate(size_t _numOfClients, int _portNum, const char* _IP)
 	
 	memset(clients->serverAddr.sin_zero, '\0', sizeof(clients->serverAddr.sin_zero));
 	
-	clients->addr_size = sizeof(serverAddr);	
+	clients->addr_size = sizeof(clients->serverAddr);
+	clients->m_numOfClients = _numOfClients;	
 	
+	return clients;
+}
+
+void ClientsRun(Clients_t* _clients)
+{
+	int* socket;
+	
+	while(1)
+	{
+		socket = &_clients->m_socketDescriptors[rand() % _clients->m_numOfClients];
+	
+		printf("%d\n", *socket);
+	
+		if(*socket == 0)
+		{
+			CreateNewConnection(socket, _clients);
+		}
+		else
+		{
+			if(rand() % 2 == 0)
+			{
+				SendMessageToServer(*socket);
+				/*RecieveMessage(*socket);*/
+			}
+			else
+			{
+				DisconnectClient(socket);
+			}
+		}
+	}
+}
+
+void ClientsDestroy(Clients_t* _clients)
+{
+	int sockIdx, numOfSocks;
+	
+	numOfSocks = _clients->m_numOfClients;
+	
+	for(sockIdx = 0; sockIdx < numOfSocks; ++sockIdx)
+	{
+		if(_clients->m_socketDescriptors[sockIdx])
+		{
+			close(_clients->m_socketDescriptors[sockIdx]);
+		}
+	}
+	
+	free(_clients->m_socketDescriptors);
+	free(_clients);
 }
 
 int main()
 {
-	int socketDesc[NUM_OF_CLIENTS];
-	char buffer[BUFF_SIZE];
-	struct sockaddr_in serverAddr;
-	socklen_t addr_size;
-	char string[1024];
-	int i, j;
-
-	for(i = 0; i < NUM_OF_CLIENTS; ++i)
-	{
-		if((socketDesc[i] = socket(PF_INET, SOCK_STREAM, 0)) == -1)
-		{
-			perror("Couldn't open socket\n");
-		}
-	}
+	Clients_t* clients;
 	
-	serverAddr.sin_family = AF_INET;
-	serverAddr.sin_port = htons(PORT);
-	serverAddr.sin_addr.s_addr = inet_addr(IP);
-	
-	memset(serverAddr.sin_zero, '\0', sizeof(serverAddr.sin_zero));
-
-	addr_size = sizeof(serverAddr);	
-	
-	for(i = 0; i < NUM_OF_CLIENTS; ++i)
-	{
-		if(connect(socketDesc[i], (struct sockaddr *) &serverAddr, addr_size) == -1)
-		{
-			perror("Couldn't establish connection with the server");
-		}
-		/*printf("Socket: %d\n", socketDesc[i]);*/
-	}
-	
-	for(j = 0; j < 10; ++j)
-	{
-		for(i = 0; i < NUM_OF_CLIENTS; ++i)
-		{
-			sprintf(string, "Client message");			
-			write(socketDesc[i], string, strlen(string) + 1);
-		}
-	}
-
-	
-	for(i = 0; i < NUM_OF_CLIENTS; ++i)
-	{
-		FinClose(socketDesc[i]);
-	}
-	
-	
-	/*read(socketDesc, buffer, BUFF_SIZE);
-	
-	printf("Data received by client: %s",buffer);  */
+	clients = ClientsCreate(100, PORT, IP);
+	ClientsRun(clients);
+	ClientsDestroy(clients);
 	
 	return 0;
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

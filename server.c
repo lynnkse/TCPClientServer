@@ -188,7 +188,7 @@ void ServerRun(Server_t* _server)
 				else if(readBytesNum > 0)
 				{
 					printf("Server recieved message: %s\nFrom socket %d\n", buffer, _server->m_currSocket);
-					write(_server->m_currSocket, buffer, strlen(buffer) + 1);
+					/*write(_server->m_currSocket, buffer, strlen(buffer) + 1);*/
 				}
 				else
 				{
