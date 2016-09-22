@@ -8,7 +8,7 @@
 
 
 #define IP "127.0.0.1"
-#define PORT_NUM 1027
+#define PORT_NUM 1030
 #define BUFF_SIZE 1024
 #define ERROR 1
 #define NUM_OF_CLIENTS 3
@@ -183,10 +183,12 @@ void ServerRun(Server_t* _server)
 					close(_server->m_currSocket);
 					HashMap_Remove(_server->m_clientSockets, _server->m_currSocketKey, &valToDestroy);
 					ValDestraction(valToDestroy);
+					printf("I destroy socket now %d\n", _server->m_currSocket);
 				}
 				else if(readBytesNum > 0)
 				{
-					printf("Server recieved message: %s\n", buffer);
+					printf("Server recieved message: %s\nFrom socket %d\n", buffer, _server->m_currSocket);
+					write(_server->m_currSocket, buffer, strlen(buffer) + 1);
 				}
 				else
 				{
