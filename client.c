@@ -4,28 +4,18 @@
 #include <string.h>
 #include <stdlib.h>
 #include  <fcntl.h>
-#include "../GenericHashMap/HashMap.h "
+#include "../generic_hash/HashMap.h"
 
 #define BUFF_SIZE 1024
 #define IP "127.0.0.1"
 #define ERROR 1
-#define PORT 1025
-#define NUM_OF_CLIENTS
+#define PORT 1027
+#define NUM_OF_CLIENTS 1000
 
 void perror(const char* _msg)
 {
 	/*TODO*/
 	exit(ERROR);
-}
-
-int SimpleHash(int* _num)
-{
-	return *_num;
-}
-
-int KeyEq(int* _num1, int* _num2)
-{
-	return *_num1 == *_num2;
 }
 
 int main()
@@ -35,7 +25,7 @@ int main()
 	struct sockaddr_in serverAddr;
 	socklen_t addr_size;
 	char string[1024];
-	int i;
+	int i, j;
 
 	for(i = 0; i < NUM_OF_CLIENTS; ++i)
 	{
@@ -59,15 +49,22 @@ int main()
 		{
 			perror("Couldn't establish connection with the server");
 		}
+		/*printf("Socket: %d\n", socketDesc[i]);*/
 	}
 	
-	while(1)
+	
+	for(j = 0; j < 10; ++j)
 	{
 		for(i = 0; i < NUM_OF_CLIENTS; ++i)
 		{
 			sprintf(string, "Client %d send a message\n", i);			
-			write(socketDesc, string, sizeof(string));
+			write(socketDesc[i], string, sizeof(string));
 		}
+	}
+	
+	for(i = 0; i < NUM_OF_CLIENTS; ++i)
+	{
+		close(socketDesc[i]);
 	}
 	
 	

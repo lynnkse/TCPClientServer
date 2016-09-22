@@ -4,11 +4,11 @@
 #include <string.h>
 #include <stdlib.h>
 #include "server.h"
-#include "../GenericHashMap/HashMap.h"
+#include "../generic_hash/HashMap.h"
 
 
 #define IP "127.0.0.1"
-#define PORT_NUM 1025
+#define PORT_NUM 1027
 #define BUFF_SIZE 1024
 #define ERROR 1
 #define NUM_OF_CLIENTS 3
@@ -176,7 +176,7 @@ void ServerRun(Server_t* _server)
 			else
 			{
 				HashMap_ForEach(_server->m_clientSockets, (KeyValueActionFunction) FdIsSetFunc, _server);
-				readBytesNum = read(_server->m_currSocket, buffer, BUFF_SIZE);
+				readBytesNum = read(_server->m_currSocket, buffer, BUFF_SIZE);/*FIXME better use recv here*/
 				
 				if(readBytesNum == 0)
 				{
