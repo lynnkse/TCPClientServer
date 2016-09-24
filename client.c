@@ -5,13 +5,14 @@
 #include <string.h>
 #include <stdlib.h>
 #include  <fcntl.h>
-#include "../generic_hash/HashMap.h"
+#include "../GenericHashMap/HashMap.h"
 #include "client.h"
+#include "../logger/logmngr.h"
 
 #define BUFF_SIZE 1024
 #define IP "127.0.0.1"
 #define ERROR 1
-#define PORT 1030
+#define PORT 1032
 #define NUM_OF_CLIENTS 30
 #define CLIENT_NOT_CONNECTED 0
 
@@ -82,7 +83,6 @@ static void DisconnectClient(int* _socket)
 			SilentClose(*_socket);
 			break;
 	} 
-	
 	*_socket = 0;
 }
 
