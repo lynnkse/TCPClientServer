@@ -20,7 +20,7 @@
 #define BUFF_SIZE 1024
 #define IP "127.0.0.1"
 #define ERROR 1
-#define PORT 1040
+#define PORT 1041
 #define NUM_OF_CLIENTS 100
 #define CLIENT_NOT_CONNECTED 0
 #define TIMEOUT 1

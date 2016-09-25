@@ -7,6 +7,7 @@
 #include "../GenericHashMap/HashMap.h"
 #include "../logger/logmngr.h"
 #include <time.h>
+#include <signal.h>
 
 /*TODO add config files*/
 /*TODO add Ctrl-C handler*/
@@ -16,7 +17,7 @@
 /*TODO check if RST produces errno*/
 
 #define IP "127.0.0.1" /*for testing*/
-#define PORT_NUM 1040 /*for testing*/
+#define PORT_NUM 1041 /*for testing*/
 #define BUFF_SIZE 1024
 #define ERROR 1
 #define NUM_OF_CLIENTS 3
@@ -25,6 +26,8 @@
 #define NUM_OF_CONNECTIONS_WAITING 1
 #define MAX_NUMBER_OF_CONNECTIONS 50
 #define TIMEOUT 1
+
+int g_isAlive = 1;
 
 typedef struct Connection_t
 {
@@ -43,7 +46,18 @@ struct Server_t
 	char* m_currSocketKey;
 	int m_port;
 	char* m_IP;
+	CallbackFunc_t m_callback;
+	void* m_buffer;
+	size_t m_buffSize;
 };
+
+static void sHandler(int _sigNum, siginfo_t* _sigInfo, char* _sigContext)
+{
+	Zlog* zlog;
+	zlog = ZlogGet("trace");
+	ZLOG_SEND(zlog, LOG_TRACE, "Server stopped by user %d", 1);
+	g_isAlive = 0;
+}
 
 static int DeleteDeadConnection(const void* _key, Connection_t* _connection, Server_t* _server)
 {
@@ -162,21 +176,40 @@ static int KeyEq(char* _str1, char* _str2)
 	return (strcmp(_str1, _str2) == 0);
 }
 
-Server_t* ServerCreate(int _portNum, const char* _IP)
+Server_t* ServerCreate(int _portNum, const char* _IP, size_t _buffSize, CallbackFunc_t _callback)
 {
 	Server_t* server;
+	
 	Zlog* zlog = ZlogGet("error");
 	
 	server = (Server_t*) malloc(sizeof(Server_t));
+	if(NULL == server)
+	{
+		ZLOG_SEND(zlog, LOG_ERROR, "couldn't allocate server %d", 1);
+		exit(-1);
+	}
+	
+	server->m_buffer = malloc(_buffSize);
+	if(NULL == server->m_buffer)
+	{
+		free(server);
+		ZLOG_SEND(zlog, LOG_ERROR, "couldn't allocate server %d", 1);
+		exit(-1);
+	}
 	
 	server->m_clientSockets = HashMap_Create(HASHMAP_CAP, (HashFunction) HashFunc, (EqualityFunction) KeyEq);
 	
 	server->m_port = _portNum;
 	server->m_IP = _IP;
 	server->m_currSocket = 0;
+	server->m_callback = _callback;
+	server->m_buffSize = _buffSize;
+	
 	
 	if((server->m_serverSocket = socket(PF_INET, SOCK_STREAM, 0)) == -1)
 	{
+		free(server->m_buffer);
+		free(server);
 		ZLOG_SEND(zlog, LOG_ERROR, "couldn't open socket %d", 1);
 		exit(-1);
 	}
@@ -203,9 +236,16 @@ Server_t* ServerCreate(int _portNum, const char* _IP)
 
 void ServerDestroy(Server_t* _server)
 {
+	Zlog* zlog;
+	zlog = ZlogGet("trace");
+	ZLOG_SEND(zlog, LOG_TRACE, "Server destroyed %d", 1);
+	
 	close(_server->m_serverSocket);
 	HashMap_Destroy(&_server->m_clientSockets, KeyDestraction, (void(*)(void*))ValDestraction);
+	free(_server->m_buffer);
 	free(_server);
+	
+	exit(0);
 }
 
 static void NewClientConnection(Server_t* _server)
@@ -236,7 +276,9 @@ static void ServerIteration(Server_t* _server)
 {
 	int result = 0;
 	int readBytesNum;
-	char buffer[BUFF_SIZE];	
+	void* buffer;
+	
+	buffer = malloc(_server->m_buffSize);	
 
 	Zlog* zlog = ZlogGet("error");
 	Zlog* zlogTrace = ZlogGet("trace");
@@ -258,7 +300,7 @@ static void ServerIteration(Server_t* _server)
 	else
 	{
 		HashMap_ForEach(_server->m_clientSockets, (KeyValueActionFunction) FdIsSetFunc, _server);
-		readBytesNum = read(_server->m_currSocket, buffer, BUFF_SIZE);
+		readBytesNum = read(_server->m_currSocket, buffer, _server->m_buffSize);
 		
 		if(readBytesNum == 0)
 		{
@@ -267,8 +309,8 @@ static void ServerIteration(Server_t* _server)
 		}
 		else if(readBytesNum > 0)
 		{
-			ZLOG_SEND(zlogTrace, LOG_TRACE, "Server recieved message: %s\nFrom socket %d", buffer, _server->m_currSocket);			
-			write(_server->m_currSocket, buffer, strlen(buffer) + 1);			
+			ZLOG_SEND(zlogTrace, LOG_TRACE, "Server recieved message from socket %d", _server->m_currSocket);			
+			_server->m_callback((char*)buffer, NULL);		
 		}
 		else
 		{
@@ -276,34 +318,52 @@ static void ServerIteration(Server_t* _server)
 			ZLOG_SEND(zlogTrace, LOG_TRACE, "Connection deleted. RST %d", 1);
 		}
 	}
-
+	/* FIXME
 	if(HashMap_Size(_server->m_clientSockets) > MAX_NUMBER_OF_CONNECTIONS)
 	{
 		HashMap_ForEach(_server->m_clientSockets, (KeyValueActionFunction) DeleteDeadConnection, _server);
-	}
+	}*/
 }
 
 void ServerRun(Server_t* _server)
 {	
 	listen(_server->m_serverSocket, NUM_OF_CONNECTIONS_WAITING);
 	
-	while(1)
+	while(g_isAlive)
 	{
 		ServerIteration(_server);
 	}
 }
 
+int GetCurrentSocket(Server_t* _server)
+{
+	return _server->m_currSocket;
+}
+
+/****************************TEST*****************************/
+
+void PrintFunc(char* _str, void* _context)
+{
+	printf("%s\n", _str);
+}
+
 int main() 
 {	
 	Server_t* server;
+	struct sigaction sAction;
 
 	ZlogInit("log_config");
 	
-	server = ServerCreate(PORT_NUM, IP);
+	sAction.sa_sigaction = (void(*)(int, siginfo_t*, void*))sHandler;
+	sAction.sa_flags = SA_SIGINFO;
+	
+	sigaction(SIGINT, &sAction, NULL);
+	
+	server = ServerCreate(PORT_NUM, IP, BUFF_SIZE, (CallbackFunc_t) PrintFunc);
 	ServerRun(server);
 	ServerDestroy(server);
 
-	LogManagerDestroy();
+	printf("asjksdfsdfsdf");
 
 	return 0;
 }
