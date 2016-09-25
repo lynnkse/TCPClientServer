@@ -6,6 +6,7 @@
 #include "server.h"
 #include "../GenericHashMap/HashMap.h"
 #include "../logger/logmngr.h"
+#include <time.h>
 
 
 #define IP "127.0.0.1"
@@ -13,10 +14,17 @@
 #define BUFF_SIZE 1024
 #define ERROR 1
 #define NUM_OF_CLIENTS 3
-#define TIMEOUT 5
 #define HASHMAP_CAP 1000
 #define KEY_LEN 128
 #define NUM_OF_CONNECTIONS_WAITING 1
+#define MAX_NUMBER_OF_CONNECTIONS 1000
+#define TIMEOUT 10
+
+typedef struct Connection_t
+{
+	int m_socket;
+	time_t m_time;
+} Connection_t;
 
 struct Server_t
 {
@@ -31,6 +39,27 @@ struct Server_t
 	char* m_IP;
 };
 
+static int DeleteDeadConnection(const void* _key, Connection_t* _connection, Server_t* _server)
+{
+	time_t currTime;
+	Zlog* zlog;
+	Connection_t* connection;
+
+	zlog = ZlogGet("trace");
+
+	currTime = time(NULL);	
+	if(time - _connection->m_time > TIMEOUT)
+	{
+		HashMap_Remove(_server->m_clientSockets, _key, (void**) &connection);
+	}
+
+	close(connection->m_socket);
+	free(connection);
+	ZLOG_SEND(zlog, LOG_TRACE, "Dead connection has been deleted %d", 1);
+
+	return 1;
+}
+
 static void SaveNewClientSocket(Server_t* _server)
 {
 	
@@ -38,8 +67,17 @@ static void SaveNewClientSocket(Server_t* _server)
 	struct sockaddr_storage addr;
 	char ipstr[INET6_ADDRSTRLEN];
 	int port;
+	Connection_t* connection;
+	Zlog* zlog;
 
-	int* val = (int*) malloc(sizeof(int));
+	zlog = ZlogGet("error");
+
+	connection = (Connection_t*) malloc(sizeof(Connection_t));
+	if(NULL == time)
+	{
+		ZLOG_SEND(zlog, LOG_ERROR, "couldn't allocate memory for new connection %d", 1);
+	}
+
 	char* key = (char*) malloc(KEY_LEN * sizeof(char)); 
 
 	len = sizeof(addr);
@@ -60,9 +98,10 @@ static void SaveNewClientSocket(Server_t* _server)
 
 	sprintf(key, "%s%d%s%d", ipstr, port, _server->m_IP, _server->m_port);
 	
-	*val = _server->m_currSocket;
+	connection->m_socket = _server->m_currSocket;
+	connection->m_time = time(NULL);
 	
-	HashMap_Insert(_server->m_clientSockets, key, val);
+	HashMap_Insert(_server->m_clientSockets, key, connection);
 }
 
 static int HashFunc(char *str)
@@ -81,32 +120,31 @@ static void KeyDestraction(void* _key)
 	free(_key);
 }
 
-static void ValDestraction(void* _val)
+static void ValDestraction(Connection_t* _val)
 {
+	close(_val->m_socket);	
 	free(_val);
 }
 
-static int FdSetFunc(char* _key, int* _value, Server_t* _server)
+static int FdSetFunc(char* _key, Connection_t* _value, Server_t* _server)
 {
-	FD_SET(*_value, &_server->m_rfds);
+	FD_SET(_value->m_socket, &_server->m_rfds);
 
 	return 1;
 }
 
-static int FdIsSetFunc(char* _key, int* _value, Server_t* _server)
+static int FdIsSetFunc(char* _key, Connection_t* _value, Server_t* _server)
 {
-	if(FD_ISSET(*_value, &_server->m_rfds) == 0)
+	if(FD_ISSET(_value->m_socket, &_server->m_rfds) == 0)
 	{
 		return 1;
 	}
 	else
 	{
-		_server->m_currSocket = *_value;
+		_server->m_currSocket = _value->m_socket;
 		_server->m_currSocketKey = _key;
 		return 0;
 	}
-	
-	return (FD_ISSET(*_value, &_server->m_rfds) == 0 ? 1 : 0);
 }
 
 static int KeyEq(char* _str1, char* _str2)
@@ -156,7 +194,7 @@ Server_t* ServerCreate(int _portNum, const char* _IP)
 void ServerDestroy(Server_t* _server)
 {
 	close(_server->m_serverSocket);
-	HashMap_Destroy(&_server->m_clientSockets, KeyDestraction, ValDestraction);
+	HashMap_Destroy(&_server->m_clientSockets, KeyDestraction, (void(*)(void*))ValDestraction);
 	free(_server);
 }
 
@@ -219,13 +257,17 @@ static void ServerIteration(Server_t* _server)
 		else if(readBytesNum > 0)
 		{
 			ZLOG_SEND(zlogTrace, LOG_TRACE, "Server recieved message: %s\nFrom socket %d", buffer, _server->m_currSocket);			
-			/*printf("Server recieved message: %s\nFrom socket %d\n", buffer, _server->m_currSocket);*/
-			/*write(_server->m_currSocket, buffer, strlen(buffer) + 1);*/
+			write(_server->m_currSocket, buffer, strlen(buffer) + 1);
 		}
 		else
 		{
 			ZLOG_SEND(zlog, LOG_ERROR, "couldn't read from socket %d", 1);
 		}
+	}
+
+	if(HashMap_Size(_server->m_clientSockets) > MAX_NUMBER_OF_CONNECTIONS)
+	{
+		HashMap_ForEach(_server->m_clientSockets, (KeyValueActionFunction) DeleteDeadConnection, _server);
 	}
 }
 
@@ -233,7 +275,7 @@ void ServerRun(Server_t* _server)
 {	
 	listen(_server->m_serverSocket, NUM_OF_CONNECTIONS_WAITING);
 	
-	while(1)/*FIXME*/
+	while(1)
 	{
 		ServerIteration(_server);
 	}

@@ -9,11 +9,12 @@
 #include "client.h"
 #include "../logger/logmngr.h"
 
+
 #define BUFF_SIZE 1024
 #define IP "127.0.0.1"
 #define ERROR 1
 #define PORT 1032
-#define NUM_OF_CLIENTS 30
+#define NUM_OF_CLIENTS 1000
 #define CLIENT_NOT_CONNECTED 0
 
 struct Clients_t
@@ -50,12 +51,11 @@ static void CreateNewConnection(int* _socket, Clients_t* _clients)
 {
 	if((*_socket = socket(PF_INET, SOCK_STREAM, 0)) == -1)
 	{
-		/*FIXME fix this!!!*/
+		printf("Error\n");
 	}
 	
 	if(connect(*_socket, (struct sockaddr *) &_clients->serverAddr, _clients->addr_size) == -1)
 	{
-		/*FIXME fix this!!!*/
 		printf("Couldn't establish connection with the server");
 	}
 }
@@ -91,8 +91,6 @@ static void RecieveMessage(int _socket)
 	char buffer[BUFF_SIZE];
 	
 	read(_socket, buffer, BUFF_SIZE);
-	
-	printf("Client recieved message: %s\n", buffer);
 }
 
 Clients_t* ClientsCreate(size_t _numOfClients, int _portNum, const char* _IP)
@@ -132,8 +130,6 @@ void ClientsRun(Clients_t* _clients)
 	{
 		socket = &_clients->m_socketDescriptors[rand() % _clients->m_numOfClients];
 	
-		printf("%d\n", *socket);
-	
 		if(*socket == 0)
 		{
 			CreateNewConnection(socket, _clients);
@@ -143,7 +139,7 @@ void ClientsRun(Clients_t* _clients)
 			if(rand() % 2 == 0)
 			{
 				SendMessageToServer(*socket);
-				/*RecieveMessage(*socket);*/
+				RecieveMessage(*socket);
 			}
 			else
 			{
