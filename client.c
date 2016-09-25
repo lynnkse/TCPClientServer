@@ -2,6 +2,7 @@
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <netinet/tcp.h>
+#include <sys/types.h>   
 #include <string.h>
 #include <stdlib.h>
 #include  <fcntl.h>
@@ -19,9 +20,10 @@
 #define BUFF_SIZE 1024
 #define IP "127.0.0.1"
 #define ERROR 1
-#define PORT 1039
+#define PORT 1040
 #define NUM_OF_CLIENTS 100
 #define CLIENT_NOT_CONNECTED 0
+#define TIMEOUT 1
 
 struct Clients_t
 {
@@ -29,6 +31,7 @@ struct Clients_t
 	socklen_t addr_size;
 	struct sockaddr_in serverAddr;
 	size_t m_numOfClients;
+	fd_set m_rfds;
 };
 
 static void ResetClose(int _socketDesc)
@@ -51,6 +54,7 @@ static void SilentClose(int _socketDesc)
 {
 	int num = 1;
 	setsockopt(_socketDesc, SOL_SOCKET, TCP_REPAIR, &num, sizeof(int));
+	close(_socketDesc);
 }
 
 static void CreateNewConnection(int* _socket, Clients_t* _clients)
@@ -87,17 +91,47 @@ static void DisconnectClient(int* _socket)
 			break;
 		case 2:
 			SilentClose(*_socket);
-			printf("Silent kill\n");
 			break;
 	} 
 	*_socket = 0;
 }
 
-static void RecieveMessage(int _socket)
+static void RecieveMessage(int* _socket, Clients_t* _clients)
 {
 	char buffer[BUFF_SIZE];
+	int readResult;
+	struct timeval timeOut;
+	FD_ZERO(&_clients->m_rfds);
+	FD_SET(*_socket, &_clients->m_rfds);
 	
-	read(_socket, buffer, BUFF_SIZE);
+	timeOut.tv_sec = TIMEOUT;
+	timeOut.tv_usec = 0;
+	
+	
+	if(select(*_socket + 1, &_clients->m_rfds, NULL, NULL, &timeOut) == 0)
+	{
+		printf("RecieveMessage, select < 0\n");
+		close(*_socket);
+		*_socket = 0;
+		return;
+	}
+	else
+	{
+		printf("RecieveMessage, select > 0, before read\n");
+		readResult = read(*_socket, buffer, BUFF_SIZE);
+		printf("RecieveMessage, select > 0, after read\n");
+		
+		if(readResult == 0)
+		{
+			close(*_socket);
+			*_socket = 0;
+			printf("Dead socket closed\n");
+		}
+		else
+		{
+			printf("Message: %s\n", buffer);
+		}
+	}
 }
 
 Clients_t* ClientsCreate(size_t _numOfClients, int _portNum, const char* _IP)
@@ -123,6 +157,8 @@ Clients_t* ClientsCreate(size_t _numOfClients, int _portNum, const char* _IP)
 	
 	memset(clients->serverAddr.sin_zero, '\0', sizeof(clients->serverAddr.sin_zero));
 	
+	FD_ZERO(&clients->m_rfds);
+	
 	clients->addr_size = sizeof(clients->serverAddr);
 	clients->m_numOfClients = _numOfClients;	
 	
@@ -146,7 +182,7 @@ void ClientsRun(Clients_t* _clients)
 			if(rand() % 2 == 0)
 			{
 				SendMessageToServer(*socket);
-				RecieveMessage(*socket);
+				/*RecieveMessage(socket, _clients);*/
 			}
 			else
 			{

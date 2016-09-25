@@ -16,7 +16,7 @@
 /*TODO check if RST produces errno*/
 
 #define IP "127.0.0.1" /*for testing*/
-#define PORT_NUM 1039 /*for testing*/
+#define PORT_NUM 1040 /*for testing*/
 #define BUFF_SIZE 1024
 #define ERROR 1
 #define NUM_OF_CLIENTS 3
@@ -56,7 +56,7 @@ static int DeleteDeadConnection(const void* _key, Connection_t* _connection, Ser
 	printf("Diff = %d\n", (int) difftime(currTime, _connection->m_time));
 
 	time(&currTime);	
-	if(difftime(currTime, _connection->m_time) > TIMEOUT)
+	if(difftime(currTime, _connection->m_time) >= TIMEOUT)
 	{
 		HashMap_Remove(_server->m_clientSockets, _key, (void**) &connection);
 		close(connection->m_socket);
