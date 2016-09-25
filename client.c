@@ -9,12 +9,18 @@
 #include "client.h"
 #include "../logger/logmngr.h"
 
+/*TODO handle situation when connection was closed by server but still in use by client*/
+/*TODO HashMap*/
+/*TODO config file*/
+/*TODO non-blocking recv() with select()*/
+/*TODO probability of entering each function - in config file*/
+/*TODO perhaps add function to deal with received data*/
 
 #define BUFF_SIZE 1024
 #define IP "127.0.0.1"
 #define ERROR 1
-#define PORT 1032
-#define NUM_OF_CLIENTS 1000
+#define PORT 1039
+#define NUM_OF_CLIENTS 100
 #define CLIENT_NOT_CONNECTED 0
 
 struct Clients_t
@@ -81,6 +87,7 @@ static void DisconnectClient(int* _socket)
 			break;
 		case 2:
 			SilentClose(*_socket);
+			printf("Silent kill\n");
 			break;
 	} 
 	*_socket = 0;

@@ -8,17 +8,23 @@
 #include "../logger/logmngr.h"
 #include <time.h>
 
+/*TODO add config files*/
+/*TODO add Ctrl-C handler*/
+/*TODO test with less I/O*/
+/*TODO add statistics*/
+/*TODO DDoS - what if no dead connections but hashmap is full*/
+/*TODO check if RST produces errno*/
 
-#define IP "127.0.0.1"
-#define PORT_NUM 1032
+#define IP "127.0.0.1" /*for testing*/
+#define PORT_NUM 1039 /*for testing*/
 #define BUFF_SIZE 1024
 #define ERROR 1
 #define NUM_OF_CLIENTS 3
 #define HASHMAP_CAP 1000
 #define KEY_LEN 128
 #define NUM_OF_CONNECTIONS_WAITING 1
-#define MAX_NUMBER_OF_CONNECTIONS 1000
-#define TIMEOUT 10
+#define MAX_NUMBER_OF_CONNECTIONS 50
+#define TIMEOUT 1
 
 typedef struct Connection_t
 {
@@ -43,19 +49,20 @@ static int DeleteDeadConnection(const void* _key, Connection_t* _connection, Ser
 {
 	time_t currTime;
 	Zlog* zlog;
-	Connection_t* connection;
+	Connection_t* connection = NULL;
 
 	zlog = ZlogGet("trace");
+	
+	printf("Diff = %d\n", (int) difftime(currTime, _connection->m_time));
 
-	currTime = time(NULL);	
-	if(time - _connection->m_time > TIMEOUT)
+	time(&currTime);	
+	if(difftime(currTime, _connection->m_time) > TIMEOUT)
 	{
 		HashMap_Remove(_server->m_clientSockets, _key, (void**) &connection);
+		close(connection->m_socket);
+		free(connection);
+		ZLOG_SEND(zlog, LOG_TRACE, "Dead connection has been deleted %d", 1);
 	}
-
-	close(connection->m_socket);
-	free(connection);
-	ZLOG_SEND(zlog, LOG_TRACE, "Dead connection has been deleted %d", 1);
 
 	return 1;
 }
@@ -73,7 +80,7 @@ static void SaveNewClientSocket(Server_t* _server)
 	zlog = ZlogGet("error");
 
 	connection = (Connection_t*) malloc(sizeof(Connection_t));
-	if(NULL == time)
+	if(NULL == connection)
 	{
 		ZLOG_SEND(zlog, LOG_ERROR, "couldn't allocate memory for new connection %d", 1);
 	}
@@ -100,7 +107,7 @@ static void SaveNewClientSocket(Server_t* _server)
 	
 	connection->m_socket = _server->m_currSocket;
 	connection->m_time = time(NULL);
-	
+		
 	HashMap_Insert(_server->m_clientSockets, key, connection);
 }
 
@@ -135,8 +142,11 @@ static int FdSetFunc(char* _key, Connection_t* _value, Server_t* _server)
 
 static int FdIsSetFunc(char* _key, Connection_t* _value, Server_t* _server)
 {
+	time_t currTime;
 	if(FD_ISSET(_value->m_socket, &_server->m_rfds) == 0)
 	{
+		time(&currTime);
+		_value->m_time = currTime;
 		return 1;
 	}
 	else
@@ -252,16 +262,18 @@ static void ServerIteration(Server_t* _server)
 		
 		if(readBytesNum == 0)
 		{
-			DeleteConnection(_server);					
+			DeleteConnection(_server);	
+			ZLOG_SEND(zlogTrace, LOG_TRACE, "Connection deleted. FIN %d", 1);				
 		}
 		else if(readBytesNum > 0)
 		{
 			ZLOG_SEND(zlogTrace, LOG_TRACE, "Server recieved message: %s\nFrom socket %d", buffer, _server->m_currSocket);			
-			write(_server->m_currSocket, buffer, strlen(buffer) + 1);
+			write(_server->m_currSocket, buffer, strlen(buffer) + 1);			
 		}
 		else
 		{
-			ZLOG_SEND(zlog, LOG_ERROR, "couldn't read from socket %d", 1);
+			DeleteConnection(_server);
+			ZLOG_SEND(zlogTrace, LOG_TRACE, "Connection deleted. RST %d", 1);
 		}
 	}
 
