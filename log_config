@@ -1,0 +1,13 @@
+[#]
+Level = LOG_TRACE
+Path = ~/c/logger/
+File = def_log.log
+[trace]
+Level = LOG_TRACE
+File = trace.log
+[error]
+Level = LOG_ERROR
+File = error.log
+[stat]
+Level = LOG_TRACE
+File = stack.log
