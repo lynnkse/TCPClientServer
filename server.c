@@ -10,12 +10,6 @@
 #include <time.h>
 #include <signal.h>
 
-/*TODO add config files*/
-/*TODO test with less I/O*/
-/*TODO add statistics*/
-/*TODO DDoS - what if no dead connections but hashmap is full*/
-/*TODO check if RST produces errno*/
-
 #define IP "127.0.0.1" /*for testing*/
 #define PORT_NUM 1041 /*for testing*/
 #define BUFF_SIZE 1024 /*for testing*/
@@ -177,7 +171,7 @@ static int KeyEq(char* _str1, char* _str2)
 	return (strcmp(_str1, _str2) == 0);
 }
 
-Server_t* ServerCreate(int _portNum, const char* _IP, CallbackFunc_t _callback, const char* _configFile)
+Server_t* ServerCreate(CallbackFunc_t _callback, const char* _configFile)
 {
 	Server_t* server;
 	Config* configs;
@@ -185,6 +179,8 @@ Server_t* ServerCreate(int _portNum, const char* _IP, CallbackFunc_t _callback, 
 	char* sMaxNumOfClients;
 	char* sTimeout;
 	char* sBuffSize;
+	char* IP;
+	char* sPort;
 	
 	Zlog* zlog = ZlogGet("error");
 	
@@ -200,9 +196,11 @@ Server_t* ServerCreate(int _portNum, const char* _IP, CallbackFunc_t _callback, 
 	HashMap_Remove(configMap, "MaxNumOfClients", (void**) &sMaxNumOfClients);
 	HashMap_Remove(configMap, "TimeoutSec", (void**) &sTimeout);
 	HashMap_Remove(configMap, "BuffSize", (void**) &sBuffSize);
+	HashMap_Remove(configMap, "IP", (void**) &IP);
+	HashMap_Remove(configMap, "Port", (void**) &sPort);
 	
-	server->m_port = _portNum;
-	server->m_IP = _IP;
+	server->m_port = atoi(sPort);
+	server->m_IP = IP;
 	server->m_currSocket = 0;
 	server->m_callback = _callback;
 	server->m_buffSize = atoi(sBuffSize);

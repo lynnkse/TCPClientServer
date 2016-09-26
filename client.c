@@ -11,13 +11,6 @@
 #include "../logger/logmngr.h"
 #include "../logger/read_config.h"
 
-/*TODO handle situation when connection was closed by server but still in use by client*/
-/*TODO HashMap*/
-/*TODO config file*/
-/*TODO non-blocking recv() with select()*/
-/*TODO probability of entering each function - in config file*/
-/*TODO perhaps add function to deal with received data*/
-
 #define BUFF_SIZE 1024
 #define IP "127.0.0.1"
 #define ERROR 1
