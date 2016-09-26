@@ -6,11 +6,11 @@
 #include "server.h"
 #include "../GenericHashMap/HashMap.h"
 #include "../logger/logmngr.h"
+#include "../logger/read_config.h"
 #include <time.h>
 #include <signal.h>
 
 /*TODO add config files*/
-/*TODO add Ctrl-C handler*/
 /*TODO test with less I/O*/
 /*TODO add statistics*/
 /*TODO DDoS - what if no dead connections but hashmap is full*/
@@ -18,14 +18,13 @@
 
 #define IP "127.0.0.1" /*for testing*/
 #define PORT_NUM 1041 /*for testing*/
-#define BUFF_SIZE 1024
+#define BUFF_SIZE 1024 /*for testing*/
 #define ERROR 1
-#define NUM_OF_CLIENTS 3
 #define HASHMAP_CAP 1000
 #define KEY_LEN 128
 #define NUM_OF_CONNECTIONS_WAITING 1
 #define MAX_NUMBER_OF_CONNECTIONS 50
-#define TIMEOUT 1
+/*#define TIMEOUT 1*/
 
 int g_isAlive = 1;
 
@@ -48,7 +47,9 @@ struct Server_t
 	char* m_IP;
 	CallbackFunc_t m_callback;
 	void* m_buffer;
-	size_t m_buffSize;
+	int m_buffSize;
+	int m_maxNumOfClients;
+	int m_timeout;
 };
 
 static void sHandler(int _sigNum, siginfo_t* _sigInfo, char* _sigContext)
@@ -176,9 +177,14 @@ static int KeyEq(char* _str1, char* _str2)
 	return (strcmp(_str1, _str2) == 0);
 }
 
-Server_t* ServerCreate(int _portNum, const char* _IP, size_t _buffSize, CallbackFunc_t _callback)
+Server_t* ServerCreate(int _portNum, const char* _IP, CallbackFunc_t _callback, const char* _configFile)
 {
 	Server_t* server;
+	Config* configs;
+	HashMap* configMap;
+	char* sMaxNumOfClients;
+	char* sTimeout;
+	char* sBuffSize;
 	
 	Zlog* zlog = ZlogGet("error");
 	
@@ -188,24 +194,31 @@ Server_t* ServerCreate(int _portNum, const char* _IP, size_t _buffSize, Callback
 		ZLOG_SEND(zlog, LOG_ERROR, "couldn't allocate server %d", 1);
 		exit(-1);
 	}
+
+	configs = ReadConfig(_configFile);
+	configMap = GetNextConfig(configs);	
+	HashMap_Remove(configMap, "MaxNumOfClients", (void**) &sMaxNumOfClients);
+	HashMap_Remove(configMap, "TimeoutSec", (void**) &sTimeout);
+	HashMap_Remove(configMap, "BuffSize", (void**) &sBuffSize);
 	
-	server->m_buffer = malloc(_buffSize);
+	server->m_port = _portNum;
+	server->m_IP = _IP;
+	server->m_currSocket = 0;
+	server->m_callback = _callback;
+	server->m_buffSize = atoi(sBuffSize);
+	server->m_maxNumOfClients = atoi(sMaxNumOfClients);
+	server->m_timeout = atoi(sTimeout);
+
+	server->m_clientSockets = HashMap_Create(server->m_maxNumOfClients, (HashFunction) HashFunc, (EqualityFunction) KeyEq);
+	
+	server->m_buffer = malloc(server->m_buffSize);
 	if(NULL == server->m_buffer)
 	{
 		free(server);
 		ZLOG_SEND(zlog, LOG_ERROR, "couldn't allocate server %d", 1);
 		exit(-1);
 	}
-	
-	server->m_clientSockets = HashMap_Create(HASHMAP_CAP, (HashFunction) HashFunc, (EqualityFunction) KeyEq);
-	
-	server->m_port = _portNum;
-	server->m_IP = _IP;
-	server->m_currSocket = 0;
-	server->m_callback = _callback;
-	server->m_buffSize = _buffSize;
-	
-	
+
 	if((server->m_serverSocket = socket(PF_INET, SOCK_STREAM, 0)) == -1)
 	{
 		free(server->m_buffer);
@@ -276,9 +289,6 @@ static void ServerIteration(Server_t* _server)
 {
 	int result = 0;
 	int readBytesNum;
-	void* buffer;
-	
-	buffer = malloc(_server->m_buffSize);	
 
 	Zlog* zlog = ZlogGet("error");
 	Zlog* zlogTrace = ZlogGet("trace");
@@ -300,7 +310,7 @@ static void ServerIteration(Server_t* _server)
 	else
 	{
 		HashMap_ForEach(_server->m_clientSockets, (KeyValueActionFunction) FdIsSetFunc, _server);
-		readBytesNum = read(_server->m_currSocket, buffer, _server->m_buffSize);
+		readBytesNum = read(_server->m_currSocket, _server->m_buffer, _server->m_buffSize);
 		
 		if(readBytesNum == 0)
 		{
@@ -340,6 +350,11 @@ int GetCurrentSocket(Server_t* _server)
 	return _server->m_currSocket;
 }
 
+SendToCurrentClient(Server* _server, void* _data, size_t _dataSize)
+{
+	write(_server->m_currSocket, _data, _dataSize);
+}
+
 /****************************TEST*****************************/
 
 void PrintFunc(char* _str, void* _context)
@@ -359,7 +374,7 @@ int main()
 	
 	sigaction(SIGINT, &sAction, NULL);
 	
-	server = ServerCreate(PORT_NUM, IP, BUFF_SIZE, (CallbackFunc_t) PrintFunc);
+	server = ServerCreate(PORT_NUM, IP, (CallbackFunc_t) PrintFunc, "server_config");
 	ServerRun(server);
 	ServerDestroy(server);
 

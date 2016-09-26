@@ -9,6 +9,7 @@
 #include "../GenericHashMap/HashMap.h"
 #include "client.h"
 #include "../logger/logmngr.h"
+#include "../logger/read_config.h"
 
 /*TODO handle situation when connection was closed by server but still in use by client*/
 /*TODO HashMap*/
@@ -30,8 +31,9 @@ struct Clients_t
 	int* m_socketDescriptors;
 	socklen_t addr_size;
 	struct sockaddr_in serverAddr;
-	size_t m_numOfClients;
+	/*size_t m_numOfClients;*/
 	fd_set m_rfds;
+	int m_numOfClients;
 };
 
 static void ResetClose(int _socketDesc)
@@ -134,9 +136,12 @@ static void RecieveMessage(int* _socket, Clients_t* _clients)
 	}
 }
 
-Clients_t* ClientsCreate(size_t _numOfClients, int _portNum, const char* _IP)
+Clients_t* ClientsCreate(int _portNum, const char* _IP, const char* _configFile)
 {
 	Clients_t* clients;
+	Config* configs;
+	HashMap* configMap;
+	char* sNumOfClients;
 	
 	clients = (Clients_t*) malloc(sizeof(Clients_t));
 	if(NULL == clients)
@@ -154,13 +159,17 @@ Clients_t* ClientsCreate(size_t _numOfClients, int _portNum, const char* _IP)
 	clients->serverAddr.sin_family = AF_INET;
 	clients->serverAddr.sin_port = htons(_portNum);
 	clients->serverAddr.sin_addr.s_addr = inet_addr(_IP);
+
+	configs = ReadConfig(_configFile);
+	configMap = GetNextConfig(configs);
+	HashMap_Remove(configMap, "NumOfClients", (void**) &sNumOfClients);
+	clients->m_numOfClients = atoi(sNumOfClients);
 	
 	memset(clients->serverAddr.sin_zero, '\0', sizeof(clients->serverAddr.sin_zero));
 	
 	FD_ZERO(&clients->m_rfds);
 	
 	clients->addr_size = sizeof(clients->serverAddr);
-	clients->m_numOfClients = _numOfClients;	
 	
 	return clients;
 }
