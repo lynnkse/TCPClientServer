@@ -4,13 +4,13 @@
 #include <string.h>
 #include <stdlib.h>
 #include "server.h"
-#include "../GenericHashMap/HashMap.h"
+#include "../generic_hash/HashMap.h"
 #include "../logger/logmngr.h"
 #include "../logger/read_config.h"
 #include <time.h>
 #include <signal.h>
 
-#define IP "127.0.0.1" /*for testing*/
+#define IP_ADDR "127.0.0.1" /*for testing*/
 #define PORT_NUM 1041 /*for testing*/
 #define BUFF_SIZE 1024 /*for testing*/
 #define ERROR 1
@@ -39,7 +39,9 @@ struct Server_t
 	char* m_currSocketKey;
 	int m_port;
 	char* m_IP;
-	CallbackFunc_t m_callback;
+	CallbackFunc_t m_callbackNew;
+	CallbackFunc_t m_callbackExisting;
+	CallbackFunc_t m_callbackDeletion;
 	void* m_buffer;
 	int m_buffSize;
 	int m_maxNumOfClients;
@@ -54,7 +56,7 @@ static void sHandler(int _sigNum, siginfo_t* _sigInfo, char* _sigContext)
 	g_isAlive = 0;
 }
 
-static int DeleteDeadConnection(const void* _key, Connection_t* _connection, Server_t* _server)
+/*static int DeleteDeadConnection(const void* _key, Connection_t* _connection, Server_t* _server)
 {
 	time_t currTime;
 	Zlog* zlog;
@@ -74,7 +76,7 @@ static int DeleteDeadConnection(const void* _key, Connection_t* _connection, Ser
 	}
 
 	return 1;
-}
+}*/
 
 static void SaveNewClientSocket(Server_t* _server)
 {
@@ -171,7 +173,7 @@ static int KeyEq(char* _str1, char* _str2)
 	return (strcmp(_str1, _str2) == 0);
 }
 
-Server_t* ServerCreate(CallbackFunc_t _callback, const char* _configFile)
+Server_t* ServerCreate(ServerArguments _arguments)
 {
 	Server_t* server;
 	Config* configs;
@@ -191,7 +193,7 @@ Server_t* ServerCreate(CallbackFunc_t _callback, const char* _configFile)
 		exit(-1);
 	}
 
-	configs = ReadConfig(_configFile);
+	configs = ReadConfig(_arguments.m_configFile);
 	configMap = GetNextConfig(configs);	
 	HashMap_Remove(configMap, "MaxNumOfClients", (void**) &sMaxNumOfClients);
 	HashMap_Remove(configMap, "TimeoutSec", (void**) &sTimeout);
@@ -202,10 +204,14 @@ Server_t* ServerCreate(CallbackFunc_t _callback, const char* _configFile)
 	server->m_port = atoi(sPort);
 	server->m_IP = IP;
 	server->m_currSocket = 0;
-	server->m_callback = _callback;
+	server->m_callbackNew = _arguments.m_callbackNew;
+	server->m_callbackExisting = _arguments.m_callbackExisting;
+	server->m_callbackDeletion = _arguments.m_callbackDeletion;
 	server->m_buffSize = atoi(sBuffSize);
 	server->m_maxNumOfClients = atoi(sMaxNumOfClients);
 	server->m_timeout = atoi(sTimeout);
+	
+	printf("Server IP: %s, Port: %d\n", server->m_IP, server->m_port);
 
 	server->m_clientSockets = HashMap_Create(server->m_maxNumOfClients, (HashFunction) HashFunc, (EqualityFunction) KeyEq);
 	
@@ -228,8 +234,8 @@ Server_t* ServerCreate(CallbackFunc_t _callback, const char* _configFile)
 	server->m_maxSocket = server->m_serverSocket;
 	
 	server->m_serverAddr.sin_family = AF_INET;
-	server->m_serverAddr.sin_port = htons(_portNum);
-	server->m_serverAddr.sin_addr.s_addr = inet_addr(_IP);
+	server->m_serverAddr.sin_port = htons(server->m_port);
+	server->m_serverAddr.sin_addr.s_addr = inet_addr(server->m_IP);
 	
 	memset(server->m_serverAddr.sin_zero, 0, sizeof(server->m_serverAddr.sin_zero));
 	
@@ -303,7 +309,9 @@ static void ServerIteration(Server_t* _server)
 	
 	if(FD_ISSET(_server->m_serverSocket, &_server->m_rfds) == 1)
 	{
-		NewClientConnection(_server);				
+		NewClientConnection(_server);	
+		ZLOG_SEND(zlogTrace, LOG_TRACE, "New connection created, %d", 1);
+		_server->m_callbackExisting(_server, NULL);				
 	}
 	else
 	{
@@ -312,16 +320,18 @@ static void ServerIteration(Server_t* _server)
 		
 		if(readBytesNum == 0)
 		{
+			_server->m_callbackDeletion(&_server->m_currSocket, _server);
 			DeleteConnection(_server);	
 			ZLOG_SEND(zlogTrace, LOG_TRACE, "Connection deleted. FIN %d", 1);				
 		}
 		else if(readBytesNum > 0)
 		{
 			ZLOG_SEND(zlogTrace, LOG_TRACE, "Server recieved message from socket %d", _server->m_currSocket);			
-			_server->m_callback((char*)buffer, NULL);		
+			_server->m_callbackExisting(_server->m_buffer, _server);		
 		}
 		else
 		{
+			_server->m_callbackDeletion(&_server->m_currSocket, _server);
 			DeleteConnection(_server);
 			ZLOG_SEND(zlogTrace, LOG_TRACE, "Connection deleted. RST %d", 1);
 		}
@@ -348,7 +358,7 @@ int GetCurrentSocket(Server_t* _server)
 	return _server->m_currSocket;
 }
 
-SendToCurrentClient(Server* _server, void* _data, size_t _dataSize)
+void SendToCurrentClient(Server_t* _server, void* _data, size_t _dataSize)
 {
 	write(_server->m_currSocket, _data, _dataSize);
 }
@@ -360,10 +370,25 @@ void PrintFunc(char* _str, void* _context)
 	printf("%s\n", _str);
 }
 
+void* OnCreateFunc(void* _arg1, void* _arg2)
+{
+	printf("On create\n");
+	return NULL;
+}
+
+void* OnDeleteFunc(void* _arg1, void* _arg2)
+{
+	printf("On create\n");
+	return NULL;
+}
+
+
+
 int main() 
 {	
 	Server_t* server;
 	struct sigaction sAction;
+	ServerArguments args = {(CallbackFunc_t) PrintFunc, OnCreateFunc, OnDeleteFunc, "server_config"};
 
 	ZlogInit("log_config");
 	
@@ -372,7 +397,7 @@ int main()
 	
 	sigaction(SIGINT, &sAction, NULL);
 	
-	server = ServerCreate(PORT_NUM, IP, (CallbackFunc_t) PrintFunc, "server_config");
+	server = ServerCreate(args);
 	ServerRun(server);
 	ServerDestroy(server);
 
